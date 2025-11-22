@@ -29,7 +29,7 @@ class VersionCheckerPlugin @Inject constructor(
     pluginDescription = PluginDescription()
         .mainType(PluginType.CONSTRAINTS)
         .neverVisible(true)
-        .alwaysEnabled(true)
+        .alwaysEnabled(false)
         .showInList { false }
         .pluginName(R.string.version_checker),
     ownPreferences = listOf(VersionCheckerLongKey::class.java),
