@@ -97,7 +97,7 @@ class EversensePlugin @Inject constructor(
     override fun onStart() {
         super.onStart()
         if (hasBluetoothPermissions()) {
-            eversense.connect(null)
+            aapsLogger.debug(LTag.BGSOURCE, "onStart — permissions granted, ready to scan")
         } else {
             aapsLogger.warn(LTag.BGSOURCE, "Bluetooth permissions not granted — requesting permissions")
             requestBluetoothPermissions()
