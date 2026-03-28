@@ -371,16 +371,8 @@ class EversensePlugin @Inject constructor(
         }
     }
 
-    // Shows a live-updating AlertDialog listing discovered Eversense devices as they are found.
-    // The user taps a device to connect; Cancel stops the scan and dismisses the dialog.
     private fun showDeviceSelectionDialog(context: Context) {
         val foundDevices = mutableListOf<EversenseScanResult>()
-
-        // Use a simple TextView as the dialog content — we rebuild the dialog when new devices are found
-        val scanningMessage = android.widget.TextView(context).apply {
-            text = "Scanning for devices..."
-            setPadding(48, 32, 48, 32)
-        }
 
         var currentDialog: AlertDialog? = null
 
@@ -395,7 +387,7 @@ class EversensePlugin @Inject constructor(
                 .setCancelable(false)
 
             if (foundDevices.isEmpty()) {
-                builder.setView(scanningMessage)
+                builder.setMessage("Scanning for Eversense devices...")
             } else {
                 val items = foundDevices.map { it.name }.toTypedArray()
                 builder.setItems(items) { _, position ->
