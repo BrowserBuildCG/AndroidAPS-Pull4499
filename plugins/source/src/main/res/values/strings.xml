@@ -75,4 +75,5 @@
     <string name="eversense_calibration_not_supported_notice">Note: Calibration submission requires a future SDK update. The UI is ready but the submit action is not yet functional.</string>
     <string name="eversense_calibration_success">Calibration submitted successfully</string>
     <string name="eversense_calibration_failed">Failed to submit calibration. Make sure the transmitter is connected and ready.</string>
+    <string name="eversense_information_last_sync_tap">Tap to trigger a full sync</string>
 </resources>

@@ -208,6 +208,27 @@ class EversenseCGMPlugin {
         }
     }
 
+
+    // Triggers both a full sync and a glucose read on the connected transmitter.
+    // Should be called from a background thread (ioScope).
+    fun triggerFullSync() {
+        val gattCallback = this.gattCallback ?: run {
+            EversenseLogger.error(TAG, "Cannot sync — no gattCallback available")
+            return
+        }
+        val preferences = preferences ?: run {
+            EversenseLogger.error(TAG, "Cannot sync — no preferences available")
+            return
+        }
+        if (!gattCallback.isConnected()) {
+            EversenseLogger.error(TAG, "Cannot sync — not connected")
+            return
+        }
+        EversenseLogger.info(TAG, "Triggering full sync on user request")
+        EversenseE3Communicator.fullSync(gattCallback, preferences, watchers.toList())
+        EversenseE3Communicator.readGlucose(gattCallback, preferences, watchers.toList())
+    }
+
     companion object {
         private const val TAG = "EversenseCGMManager"
 

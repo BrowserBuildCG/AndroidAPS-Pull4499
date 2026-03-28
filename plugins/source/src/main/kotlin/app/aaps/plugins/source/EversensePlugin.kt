@@ -306,6 +306,17 @@ class EversensePlugin @Inject constructor(
             lastSync.key = "eversense_information_last_sync"
             lastSync.title = rh.gs(R.string.eversense_information_last_sync)
             lastSync.summary = state?.let { dateFormatter.format(Date(it.lastSync)) } ?: notConnected
+            lastSync.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+                aapsLogger.debug(LTag.BGSOURCE, "User tapped Last Sync — triggering full sync and glucose read")
+                if (!eversense.isConnected()) {
+                    aapsLogger.warn(LTag.BGSOURCE, "Cannot sync — not connected")
+                    return@OnPreferenceClickListener false
+                }
+                ioScope.launch {
+                    eversense.triggerFullSync()
+                }
+                return@OnPreferenceClickListener true
+            }
             addPreference(lastSync)
             lastSyncPreference = lastSync
         }
