@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
-import android.widget.ArrayAdapter
-import android.widget.ListView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
@@ -375,61 +373,55 @@ class EversensePlugin @Inject constructor(
     private fun showDeviceSelectionDialog(context: Context) {
         val foundDevices = mutableListOf<EversenseScanResult>()
         var isCancelled = false
-
-        val adapter = ArrayAdapter<String>(context, android.R.layout.simple_list_item_1)
-        val listView = android.widget.ListView(context).apply {
-            this.adapter = adapter
-        }
-
-        val dialog = AlertDialog.Builder(context)
-            .setTitle(rh.gs(R.string.eversense_scan_title))
-            .setMessage("Scanning for Eversense devices...")
-            .setNegativeButton(rh.gs(R.string.eversense_scan_cancel)) { _, _ ->
-                isCancelled = true
-                eversense.stopScan()
-                aapsLogger.info(LTag.BGSOURCE, "Device scan cancelled by user")
-            }
-            .setCancelable(false)
-            .create()
-
-        dialog.setOnShowListener {
-            // Switch from message to list view once dialog is shown
-            dialog.findViewById<android.widget.TextView>(android.R.id.message)?.visibility = android.view.View.VISIBLE
-        }
-
-        listView.setOnItemClickListener { _, _, position, _ ->
-            if (position < foundDevices.size) {
-                val selected = foundDevices[position]
-                aapsLogger.info(LTag.BGSOURCE, "User selected device: ${selected.name}")
-                isCancelled = true
-                eversense.stopScan()
-                eversense.connect(selected.device)
-                dialog.dismiss()
-            }
-        }
+        var dialog: AlertDialog? = null
 
         val scanCallback = object : EversenseScanCallback {
             override fun onResult(item: EversenseScanResult) {
                 if (!isCancelled && foundDevices.none { it.name == item.name }) {
                     foundDevices.add(item)
                     aapsLogger.info(LTag.BGSOURCE, "Scan found device: ${item.name}")
-                    mainHandler.post {
-                        if (!isCancelled && dialog.isShowing) {
-                            // First device found — switch from message to list
-                            if (foundDevices.size == 1) {
-                                dialog.setMessage(null)
-                                dialog.setView(listView)
-                            }
-                            adapter.add(item.name)
-                            adapter.notifyDataSetChanged()
-                        }
-                    }
                 }
             }
         }
 
         eversense.startScan(scanCallback)
-        dialog.show()
+
+        // After 3 seconds show results dialog
+        mainHandler.postDelayed({
+                                    if (isCancelled) return@postDelayed
+                                    eversense.stopScan()
+                                    dialog?.dismiss()
+
+                                    if (foundDevices.isEmpty()) {
+                                        AlertDialog.Builder(context)
+                                            .setTitle(rh.gs(R.string.eversense_scan_title))
+                                            .setMessage("No Eversense transmitters found. Make sure the transmitter is nearby and try again.")
+                                            .setPositiveButton("OK", null)
+                                            .show()
+                                    } else {
+                                        val items = foundDevices.map { it.name }.toTypedArray()
+                                        AlertDialog.Builder(context)
+                                            .setTitle(rh.gs(R.string.eversense_scan_title))
+                                            .setItems(items) { _, position ->
+                                                val selected = foundDevices[position]
+                                                aapsLogger.info(LTag.BGSOURCE, "User selected device: ${selected.name}")
+                                                eversense.connect(selected.device)
+                                            }
+                                            .setNegativeButton(rh.gs(R.string.eversense_scan_cancel), null)
+                                            .show()
+                                    }
+                                }, 3000)
+
+        // Show scanning progress dialog
+        dialog = AlertDialog.Builder(context)
+            .setTitle(rh.gs(R.string.eversense_scan_title))
+            .setMessage("Scanning for Eversense devices...")
+            .setNegativeButton(rh.gs(R.string.eversense_scan_cancel)) { _, _ ->
+                isCancelled = true
+                eversense.stopScan()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     companion object {
