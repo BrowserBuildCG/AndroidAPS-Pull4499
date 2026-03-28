@@ -33,3 +33,9 @@ wear/pumpcontrol/*
 /buildSrc/.kotlin
 .claude/settings.local.json
 .claude/CLAUDE_COMMANDS.md
+
+compile*.txt
+ksp_*.txt
+ksp_info.txt
+
+build_final.txt

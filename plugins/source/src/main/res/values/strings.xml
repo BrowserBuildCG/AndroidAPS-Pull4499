@@ -25,7 +25,6 @@
     <string name="random_bg">Random BG</string>
     <string name="description_source_random_bg">Generate random BG data (Demo mode only)</string>
     <string name="random_bg_short">BG</string>
-
     <string name="bgsource_settings">BG source settings</string>
     <string name="bgsource_log_sensor_change_title">Accept sensor start</string>
     <string name="bgsource_log_sensor_change_summary">Create event \"CGM Sensor Insert\" in Careportal automatically on received sensor start from BG source local broadcast</string>
@@ -40,4 +39,40 @@
     <!-- Patched Sino App -->
     <string name="patched_sino_app">Sino App</string>
     <string name="description_source_patched_sino_app">Receive glucose data from Patched Sino App.</string>
+    <!-- Eversense plugin -->
+    <string name="source_eversense">Eversense</string>
+    <string name="description_source_eversense">Eversense E3/365 driver</string>
+    <string name="eversense_information_title">Information</string>
+    <string name="eversense_information_connected">Connected</string>
+    <string name="eversense_information_battery">Battery percentage</string>
+    <string name="eversense_information_insertion_date">Insertion date</string>
+    <string name="eversense_information_last_sync">Last synchronisation</string>
+    <string name="eversense_calibration_title">Calibration</string>
+    <string name="eversense_calibration_phase">Phase</string>
+    <string name="eversense_calibration_last">Last calibration</string>
+    <string name="eversense_calibration_next">Next calibration</string>
+    <string name="eversense_calibration_action">Calibrate transmitter</string>
+    <string name="eversense_use_smoothing">Use ESEL Smoothing</string>
+    <!-- Credentials section for Eversense 365 DMS login -->
+    <string name="eversense_not_connected">Not connected</string>
+    <string name="eversense_credentials_title">Eversense 365 credentials</string>
+    <string name="eversense_credentials_username">Username</string>
+    <string name="eversense_credentials_password">Password</string>
+    <string name="eversense_credentials_not_set">Not set</string>
+    <string name="eversense_credentials_password_set">Set (hidden)</string>
+    <!-- Device scan dialog -->
+    <string name="eversense_scan_title">Select Eversense transmitter</string>
+    <string name="eversense_scan_cancel">Cancel</string>
+    <string name="eversense_scan_unknown_device">Unknown device</string>
+    <!-- Calibration activity -->
+    <string name="eversense_calibration_ready">Ready to calibrate</string>
+    <string name="eversense_calibration_status">Calibration status</string>
+    <string name="eversense_calibration_bg_value">Blood glucose value</string>
+    <string name="eversense_calibration_bg_hint">Enter BG value</string>
+    <string name="eversense_calibration_submit">Submit calibration</string>
+    <string name="eversense_calibration_invalid_value">Please enter a valid blood glucose value</string>
+    <string name="eversense_calibration_not_supported">Calibration submission is not yet supported by the Eversense SDK</string>
+    <string name="eversense_calibration_not_supported_notice">Note: Calibration submission requires a future SDK update. The UI is ready but the submit action is not yet functional.</string>
+    <string name="eversense_calibration_success">Calibration submitted successfully</string>
+    <string name="eversense_calibration_failed">Failed to submit calibration. Make sure the transmitter is connected and ready.</string>
 </resources>
