@@ -373,49 +373,62 @@ class EversensePlugin @Inject constructor(
 
     private fun showDeviceSelectionDialog(context: Context) {
         val foundDevices = mutableListOf<EversenseScanResult>()
+        var isCancelled = false
 
-        var currentDialog: AlertDialog? = null
+        val adapter = ArrayAdapter<String>(context, android.R.layout.simple_list_item_1)
+        val listView = android.widget.ListView(context).apply {
+            this.adapter = adapter
+        }
 
-        fun rebuildDialog() {
-            currentDialog?.dismiss()
-            val builder = AlertDialog.Builder(context)
-                .setTitle(rh.gs(R.string.eversense_scan_title))
-                .setNegativeButton(rh.gs(R.string.eversense_scan_cancel)) { _, _ ->
-                    eversense.stopScan()
-                    aapsLogger.info(LTag.BGSOURCE, "Device scan cancelled by user")
-                }
-                .setCancelable(false)
-
-            if (foundDevices.isEmpty()) {
-                builder.setMessage("Scanning for Eversense devices...")
-            } else {
-                val items = foundDevices.map { it.name }.toTypedArray()
-                builder.setItems(items) { _, position ->
-                    val selected = foundDevices[position]
-                    aapsLogger.info(LTag.BGSOURCE, "User selected device: ${selected.name}")
-                    eversense.stopScan()
-                    eversense.connect(selected.device)
-                }
+        val dialog = AlertDialog.Builder(context)
+            .setTitle(rh.gs(R.string.eversense_scan_title))
+            .setMessage("Scanning for Eversense devices...")
+            .setNegativeButton(rh.gs(R.string.eversense_scan_cancel)) { _, _ ->
+                isCancelled = true
+                eversense.stopScan()
+                aapsLogger.info(LTag.BGSOURCE, "Device scan cancelled by user")
             }
+            .setCancelable(false)
+            .create()
 
-            currentDialog = builder.create()
-            currentDialog?.show()
+        dialog.setOnShowListener {
+            // Switch from message to list view once dialog is shown
+            dialog.findViewById<android.widget.TextView>(android.R.id.message)?.visibility = android.view.View.VISIBLE
+        }
+
+        listView.setOnItemClickListener { _, _, position, _ ->
+            if (position < foundDevices.size) {
+                val selected = foundDevices[position]
+                aapsLogger.info(LTag.BGSOURCE, "User selected device: ${selected.name}")
+                isCancelled = true
+                eversense.stopScan()
+                eversense.connect(selected.device)
+                dialog.dismiss()
+            }
         }
 
         val scanCallback = object : EversenseScanCallback {
             override fun onResult(item: EversenseScanResult) {
-                if (foundDevices.none { it.name == item.name }) {
+                if (!isCancelled && foundDevices.none { it.name == item.name }) {
                     foundDevices.add(item)
                     aapsLogger.info(LTag.BGSOURCE, "Scan found device: ${item.name}")
                     mainHandler.post {
-                        rebuildDialog()
+                        if (!isCancelled && dialog.isShowing) {
+                            // First device found — switch from message to list
+                            if (foundDevices.size == 1) {
+                                dialog.setMessage(null)
+                                dialog.setView(listView)
+                            }
+                            adapter.add(item.name)
+                            adapter.notifyDataSetChanged()
+                        }
                     }
                 }
             }
         }
 
         eversense.startScan(scanCallback)
-        rebuildDialog()
+        dialog.show()
     }
 
     companion object {
