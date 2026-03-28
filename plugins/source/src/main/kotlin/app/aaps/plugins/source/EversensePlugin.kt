@@ -1,7 +1,6 @@
 package app.aaps.plugins.source
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
@@ -9,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.ArrayAdapter
 import android.widget.ListView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.preference.EditTextPreference
