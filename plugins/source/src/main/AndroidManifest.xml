@@ -6,6 +6,12 @@
         <activity
             android:name=".activities.RequestDexcomPermissionActivity"
             android:exported="false" />
+        <activity
+            android:name=".activities.RequestEversensePermissionActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.EversenseCalibrationActivity"
+            android:exported="false" />
 
     </application>
 
