@@ -282,7 +282,8 @@ class EversensePlugin @Inject constructor(
                     return@OnPreferenceClickListener false
                 }
                 aapsLogger.debug(LTag.BGSOURCE, "User tapped connect — starting BLE scan")
-                showDeviceSelectionDialog(context)
+                val activityContext = preferenceManager.context
+                showDeviceSelectionDialog(activityContext)
                 return@OnPreferenceClickListener true
             }
             addPreference(connected)
