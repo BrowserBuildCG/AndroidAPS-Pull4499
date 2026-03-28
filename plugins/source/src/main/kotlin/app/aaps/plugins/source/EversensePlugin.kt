@@ -401,15 +401,15 @@ class EversensePlugin @Inject constructor(
 
         val scanCallback = object : EversenseScanCallback {
             override fun onResult(item: EversenseScanResult) {
-                // Avoid duplicate entries for the same device address.
-                if (foundDevices.none { it.device.address == item.device.address }) {
+                // Avoid duplicate entries — use name as key since address requires BLUETOOTH_CONNECT permission
+                if (foundDevices.none { it.name == item.name }) {
                     foundDevices.add(item)
-                    val label = "${item.device.name ?: rh.gs(R.string.eversense_scan_unknown_device)}  ${item.device.address}"
+                    val label = item.name
                     mainHandler.post {
                         displayItems.add(label)
                         adapter.notifyDataSetChanged()
+                        aapsLogger.info(LTag.BGSOURCE, "Scan result added to dialog: $label")
                     }
-                    aapsLogger.info(LTag.BGSOURCE, "Scan found: ${item.device.name} (${item.device.address})")
                 }
             }
         }
