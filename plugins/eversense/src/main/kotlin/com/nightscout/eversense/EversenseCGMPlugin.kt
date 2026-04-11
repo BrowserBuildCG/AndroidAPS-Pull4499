@@ -14,6 +14,7 @@ import com.nightscout.eversense.callbacks.EversenseWatcher
 import com.nightscout.eversense.models.EversenseState
 import com.nightscout.eversense.models.EversenseTransmitterSettings
 import com.nightscout.eversense.packets.EversenseE3Communicator
+import com.nightscout.eversense.packets.e3.GetSignalStrengthRawPacket
 import com.nightscout.eversense.util.EversenseLogger
 import com.nightscout.eversense.util.EversenseScanner
 import com.nightscout.eversense.util.StorageKeys
@@ -45,7 +46,6 @@ class EversenseCGMPlugin {
         gattCallback = EversenseGattCallback(this, preference)
     }
 
-    // FIX 3: setSmoothing now returns Boolean and logs on failure.
     fun setSmoothing(value: Boolean): Boolean {
         val state = getCurrentState() ?: run {
             EversenseLogger.error(TAG, "Cannot set smoothing: current state is null. Has setContext been called?")
@@ -67,6 +67,7 @@ class EversenseCGMPlugin {
     }
 
     fun isConnected(): Boolean = gattCallback?.isConnected() ?: false
+    fun is365(): Boolean = gattCallback?.is365() ?: false
 
     fun getCurrentState(): EversenseState? {
         val preferences = preferences ?: run {
@@ -84,11 +85,11 @@ class EversenseCGMPlugin {
             return
         }
         scanner = EversenseScanner(callback)
-        val filters = listOf(
-            ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(EversenseGattCallback.serviceUUID)).build()
-        )
+        // Scan without service UUID filter — Eversense transmitters may not always advertise
+        // the service UUID before pairing. Show all BLE devices so user can identify their transmitter.
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-        bluetoothScanner.startScan(filters, settings, scanner)
+        bluetoothScanner.startScan(null, settings, scanner)
+        EversenseLogger.info(TAG, "BLE scan started")
     }
 
     // FIX 4: Added public stopScan() so callers can cancel scanning independently.
@@ -126,9 +127,15 @@ class EversenseCGMPlugin {
                 return true
             }
 
+            // Clean up stale GATT connections before connecting
+            gattCallback.cleanUp()
+
             return if (device != null) {
                 EversenseLogger.info(TAG, "Connecting to supplied device: ${device.name}")
-                device.connectGatt(context, false, gattCallback)
+                // Save address so we can auto-reconnect after app restart or phone reboot
+                preferences?.edit()?.putString(StorageKeys.REMOTE_DEVICE_KEY, device.address)?.apply()
+                EversenseLogger.info(TAG, "Saved device address for auto-reconnect: ${device.address}")
+                device.connectGatt(context, true, gattCallback, android.bluetooth.BluetoothDevice.TRANSPORT_LE)
                 true
             } else {
                 val address = preferences?.getString(StorageKeys.REMOTE_DEVICE_KEY, null) ?: run {
@@ -140,13 +147,18 @@ class EversenseCGMPlugin {
                     return false
                 }
                 EversenseLogger.info(TAG, "Reconnecting to stored device: $address")
-                remoteDevice.connectGatt(context, false, gattCallback)
+                remoteDevice.connectGatt(context, true, gattCallback, android.bluetooth.BluetoothDevice.TRANSPORT_LE)
                 true
             }
         }
     }
 
     // FIX 7: Added disconnect() which calls both disconnect() and close() on the GATT client.
+    fun clearStoredDevice() {
+        preferences?.edit()?.remove(StorageKeys.REMOTE_DEVICE_KEY)?.apply()
+        EversenseLogger.info(TAG, "Cleared stored device address")
+    }
+
     fun disconnect() {
         val gattCallback = this.gattCallback ?: run {
             EversenseLogger.info(TAG, "disconnect() called but no gattCallback exists")
@@ -182,7 +194,7 @@ class EversenseCGMPlugin {
     // Send a blood glucose calibration value to the transmitter.
     // Requires CalibrationReadiness.READY state and an active connection.
     // Returns true if the packet was sent successfully, false otherwise.
-    fun sendCalibration(glucoseMgDl: Int): Boolean {
+    fun sendCalibration(glucoseMgDl: Int, timestampMs: Long = System.currentTimeMillis()): Boolean {
         val gattCallback = this.gattCallback ?: run {
             EversenseLogger.error(TAG, "No gattCallback available. Make sure transmitter is connected before calibrating")
             return false
@@ -200,7 +212,13 @@ class EversenseCGMPlugin {
             return false
         }
         return try {
-            EversenseE3Communicator.sendCalibration(gattCallback, glucoseMgDl)
+            if (gattCallback.is365()) {
+                val packet = com.nightscout.eversense.packets.e365.SetBloodGlucosePointPacket365(glucoseMgDl, timestampMs)
+                gattCallback.writePacket<com.nightscout.eversense.packets.e365.SetBloodGlucosePointPacket365.Response>(packet)
+                EversenseLogger.info(TAG, "365 calibration sent: $glucoseMgDl mg/dL")
+            } else {
+                EversenseE3Communicator.sendCalibration(gattCallback, glucoseMgDl)
+            }
             true
         } catch (e: Exception) {
             EversenseLogger.error(TAG, "Failed to send calibration: $e")
@@ -211,7 +229,7 @@ class EversenseCGMPlugin {
 
     // Triggers both a full sync and a glucose read on the connected transmitter.
     // Should be called from a background thread (ioScope).
-    fun triggerFullSync() {
+    fun triggerFullSync(force: Boolean = false) {
         val gattCallback = this.gattCallback ?: run {
             EversenseLogger.error(TAG, "Cannot sync — no gattCallback available")
             return
@@ -225,8 +243,64 @@ class EversenseCGMPlugin {
             return
         }
         EversenseLogger.info(TAG, "Triggering full sync on user request")
-        EversenseE3Communicator.fullSync(gattCallback, preferences, watchers.toList())
+        EversenseE3Communicator.fullSync(gattCallback, preferences, watchers.toList(), force)
         EversenseE3Communicator.readGlucose(gattCallback, preferences, watchers.toList())
+        // Update placement signal after sync
+        gattCallback.readRssi()
+    }
+
+    // Called by EversenseGattCallback when RSSI is read
+    fun onRssiRead(rssi: Int) {
+        val preferences = preferences ?: return
+        val stateJson = preferences.getString(StorageKeys.STATE, null) ?: "{}"
+        val state = JSON.decodeFromString<EversenseState>(stateJson)
+        state.placementSignalRssi = rssi
+        state.sensorSignalStrength = rssiToStrength(rssi)
+        preferences.edit()?.putString(StorageKeys.STATE, JSON.encodeToString(state))?.apply()
+        EversenseLogger.debug(TAG, "RSSI updated: $rssi dBm")
+        watchers.forEach { it.onStateChanged(state) }
+    }
+
+
+    // Read transmitter-to-sensor signal strength.
+    // Tries the Eversense 365 ReadSignalStrength packet first.
+    // Falls back to BLE RSSI for E3 transmitters which don't support the packet.
+    fun readSignalStrength() {
+        val gattCallback = this.gattCallback ?: run { EversenseLogger.error(TAG, "Cannot read signal strength — no gattCallback"); return }
+        val preferences = this.preferences ?: run { EversenseLogger.error(TAG, "Cannot read signal strength — no preferences"); return }
+        if (!gattCallback.isConnected()) { EversenseLogger.warning(TAG, "Cannot read signal strength — not connected"); return }
+        try {
+            val signalStrength = if (gattCallback.is365()) {
+                val response = gattCallback.writePacket<com.nightscout.eversense.packets.e365.GetSignalStrengthPacket.Response>(com.nightscout.eversense.packets.e365.GetSignalStrengthPacket())
+                response.signalStrength
+            } else {
+                val response = gattCallback.writePacket<GetSignalStrengthRawPacket.Response>(GetSignalStrengthRawPacket())
+                EversenseLogger.info(TAG, "E3 signal raw: $($response.rawValue) -> $($response.signalStrength)%")
+                response.signalStrength
+            }
+            val stateJson = preferences.getString(com.nightscout.eversense.util.StorageKeys.STATE, null) ?: "{}"
+            val state = JSON.decodeFromString<EversenseState>(stateJson)
+            state.sensorSignalStrength = signalStrength
+            preferences.edit()?.putString(com.nightscout.eversense.util.StorageKeys.STATE, JSON.encodeToString(state))?.apply()
+            EversenseLogger.info(TAG, "Signal strength: $signalStrength%")
+            watchers.forEach { it.onStateChanged(state) }
+        } catch (e: Exception) {
+            EversenseLogger.warning(TAG, "readSignalStrength failed: $e")
+            gattCallback.readRssi()
+        }
+    }
+
+        private fun rssiToStrength(rssi: Int): Int = when {
+        rssi == 0   -> 0
+        rssi >= -65 -> 100
+        rssi >= -75 -> 80
+        rssi >= -85 -> 60
+        rssi >= -95 -> 40
+        else        -> 20
+    }
+
+        fun readRssi() {
+        gattCallback?.readRssi()
     }
 
     companion object {
