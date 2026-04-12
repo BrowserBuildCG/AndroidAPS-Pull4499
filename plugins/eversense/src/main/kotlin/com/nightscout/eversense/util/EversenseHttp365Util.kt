@@ -174,6 +174,16 @@ class EversenseHttp365Util {
             EversenseLogger.info(TAG, "Uploading ${uploadable.size} reading(s) — TransmitterId='$transmitterSerialNumber'")
 
             return try {
+                // Only upload readings that have raw BLE data — backfill history entries have no
+                // rawResponseHex and cannot produce a valid EssentialLog for the server.
+                val uploadable = readings.filter { it.rawResponseHex.isNotEmpty() }
+                if (uploadable.isEmpty()) {
+                    EversenseLogger.info(TAG, "No readings with raw BLE data to upload — skipping")
+                    return true
+                }
+
+                EversenseLogger.info(TAG, "Uploading ${uploadable.size} reading(s) — TransmitterId='$transmitterSerialNumber'")
+
                 // EssentialLog must be base64-encoded bytes (System.Byte[] in .NET JSON serialization)
                 // Body must be a bare JSON array — server deserializes directly to List<GlucoseEssentialLogsVM>
                 val jsonBody = uploadable.joinToString(prefix = "[", postfix = "]") { r ->
