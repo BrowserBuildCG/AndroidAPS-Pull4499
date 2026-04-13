@@ -103,6 +103,7 @@
     <string name="eversense_placement_instruction_not_connected">Connect to your transmitter to view signal strength.</string>
     <string name="eversense_placement_reading">Reading&#8230;</string>`n    <string name="eversense_placement_connected">Transmitter Connected</string>
     <string name="eversense_placement_connected_instruction">Your transmitter is connected. Make sure it is positioned directly over your sensor site and secured with the adhesive patch.</string>
+    <string name="eversense_reconnecting">Reconnecting to transmitter&#8230;</string>
     <string name="eversense_calibration_sending">Sending calibration&#8230;</string>
     <string name="eversense_release_for_official_app">Release for Official App</string>
     <string name="eversense_release_summary">Disconnect so the official Eversense app can connect. AAPS will reconnect every 5 minutes automatically.</string>
