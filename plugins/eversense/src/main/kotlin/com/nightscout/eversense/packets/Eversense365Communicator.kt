@@ -141,6 +141,7 @@ class Eversense365Communicator {
                 state.firmwareVersion = sensorInformation.version
                 state.extFirmwareVersion = sensorInformation.extVersion
                 state.transmitterSerialNumber = sensorInformation.serialNumber
+                state.transmitterName = sensorInformation.transmitterName
                 EversenseLogger.info(TAG, "Transmitter serialNumber='${sensorInformation.serialNumber}' transmitterName='${sensorInformation.transmitterName}'")
                 EversenseLogger.info(TAG, "Firmware version: ${sensorInformation.version} / ${sensorInformation.extVersion}")
 
