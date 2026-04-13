@@ -15,10 +15,10 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
-import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationLevel
-import app.aaps.core.interfaces.notifications.NotificationManager
+import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventDismissNotification
+import app.aaps.core.interfaces.rx.events.EventNewNotification
 import com.nightscout.eversense.models.ActiveAlarm
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
@@ -36,7 +36,6 @@ import app.aaps.core.keys.interfaces.Preferences
 import com.nightscout.eversense.EversenseCGMPlugin
 import com.nightscout.eversense.callbacks.EversenseScanCallback
 import com.nightscout.eversense.callbacks.EversenseWatcher
-import app.aaps.plugins.source.compose.BgSourceComposeContent
 import com.nightscout.eversense.enums.CalibrationReadiness
 import com.nightscout.eversense.enums.EversenseAlarm
 import com.nightscout.eversense.enums.EversenseType
@@ -60,23 +59,18 @@ class EversensePlugin @Inject constructor(
     private val context: Context,
     aapsLogger: AAPSLogger,
     preferences: Preferences,
-    config: Config,
-    private val notificationManager: NotificationManager
+    private val rxBus: RxBus
 ) : AbstractBgSourcePlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
-        .composeContent { _ ->
-            BgSourceComposeContent(
-                title = rh.gs(R.string.source_eversense)
-            )
-        }
+        .fragmentClass(BGSourceFragment::class.java.name)
         .pluginIcon(app.aaps.core.objects.R.drawable.ic_blooddrop_48)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .pluginName(R.string.source_eversense)
         .preferencesVisibleInSimpleMode(false)
         .description(R.string.description_source_eversense),
     ownPreferences = emptyList(),
-    aapsLogger, rh, preferences, config
+    aapsLogger, rh, preferences
 ), BgSource, EversenseWatcher {
 
     @Inject lateinit var persistenceLayer: PersistenceLayer
@@ -125,6 +119,8 @@ class EversensePlugin @Inject constructor(
     init {
         eversense.setContext(context, true)
     }
+
+    override fun advancedFilteringSupported(): Boolean = true
 
     override fun onStart() {
         super.onStart()
@@ -491,7 +487,7 @@ class EversensePlugin @Inject constructor(
                     releaseForOfficialApp = false
                     mainHandler.post {
                         releasePreference?.summary = rh.gs(R.string.eversense_release_summary)
-                        notificationManager.dismiss(NotificationId.EVERSENSE_RELEASE)
+                        rxBus.send(EventDismissNotification(97))
                     }
                 } else {
                     aapsLogger.info(LTag.BGSOURCE, "Reconnect failed — retrying in 5 minutes")
@@ -535,7 +531,7 @@ class EversensePlugin @Inject constructor(
         } else {
             consecutiveNoSignalReadings = 0
             placementNotificationSnoozed = false
-            notificationManager.dismiss(NotificationId.EVERSENSE_PLACEMENT)
+            rxBus.send(EventDismissNotification(98))
         }
 
         // Show sensor expiry notifications at 60, 30, and 10 days remaining — once each, at noon, keyed to insertionDate
@@ -547,37 +543,38 @@ class EversensePlugin @Inject constructor(
 
             if (isAfterNoon && daysRemaining in 31..60 && !isSensorExpiryDismissed(state.insertionDate, 60)) {
                 setSensorExpiryDismissed(state.insertionDate, 60)
-                notificationManager.post(
-                    NotificationId.EVERSENSE_ALARM,
-                    "Eversense sensor expires in $daysRemaining days — plan your sensor replacement.",
-                    level = NotificationLevel.INFO
-                )
+                rxBus.send(EventNewNotification(
+                    Notification(99, "Eversense sensor expires in $daysRemaining days — plan your sensor replacement.", Notification.INFO)
+                        .also { n -> n.action = Runnable { rxBus.send(EventDismissNotification(99)) }; n.buttonText = app.aaps.core.ui.R.string.ok }
+                ))
             } else if (isAfterNoon && daysRemaining in 11..30 && !isSensorExpiryDismissed(state.insertionDate, 30)) {
                 setSensorExpiryDismissed(state.insertionDate, 30)
-                notificationManager.post(
-                    NotificationId.EVERSENSE_ALARM,
-                    "Eversense sensor expires in $daysRemaining days — replace your sensor soon.",
-                    level = NotificationLevel.NORMAL
-                )
+                rxBus.send(EventNewNotification(
+                    Notification(100, "Eversense sensor expires in $daysRemaining days — replace your sensor soon.", Notification.NORMAL)
+                        .also { n -> n.action = Runnable { rxBus.send(EventDismissNotification(100)) }; n.buttonText = app.aaps.core.ui.R.string.ok }
+                ))
             } else if (isAfterNoon && daysRemaining in 1..10 && !isSensorExpiryDismissed(state.insertionDate, daysRemaining)) {
                 setSensorExpiryDismissed(state.insertionDate, daysRemaining)
-                notificationManager.post(
-                    NotificationId.EVERSENSE_ALARM,
-                    "Eversense sensor expires in $daysRemaining days — replace your sensor immediately.",
-                    level = NotificationLevel.URGENT
-                )
+                rxBus.send(EventNewNotification(
+                    Notification(101, "Eversense sensor expires in $daysRemaining days — replace your sensor immediately.", Notification.URGENT)
+                        .also { n -> n.action = Runnable { rxBus.send(EventDismissNotification(101)) }; n.buttonText = app.aaps.core.ui.R.string.ok }
+                ))
             }
         }
 
-        // Battery low notification — fires once at noon when battery < 11%
+        // Battery low notification — fires once at noon when battery < 11%, dismissed by user, never shown again
         val isAfterNoonBattery = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) >= 12
         if (isAfterNoonBattery && state.batteryPercentage in 1..10 && !isBatteryLowDismissed()) {
-            setBatteryLowDismissed()
-            notificationManager.post(
-                NotificationId.EVERSENSE_ALARM,
-                "Eversense transmitter battery low: ${state.batteryPercentage}% — please charge your transmitter.",
-                level = NotificationLevel.NORMAL
-            )
+            rxBus.send(EventNewNotification(
+                Notification(102, "Eversense transmitter battery low: ${state.batteryPercentage}% — please charge your transmitter.", Notification.NORMAL)
+                    .also { n ->
+                        n.action = Runnable {
+                            setBatteryLowDismissed()
+                            rxBus.send(EventDismissNotification(102))
+                        }
+                        n.buttonText = app.aaps.core.ui.R.string.ok
+                    }
+            ))
         }
 
         // Calibration due notification — E365 only, fires once at noon per nextCalibrationDate
@@ -585,34 +582,46 @@ class EversensePlugin @Inject constructor(
         if (eversense.is365() && isAfterNoonCal && state.nextCalibrationDate > 0
             && System.currentTimeMillis() >= state.nextCalibrationDate
             && !isCalibrationDueDismissed(state.nextCalibrationDate)) {
-            setCalibrationDueDismissed(state.nextCalibrationDate)
-            notificationManager.post(
-                NotificationId.EVERSENSE_ALARM,
-                "Eversense calibration is due — open AAPS to calibrate your sensor.",
-                level = NotificationLevel.NORMAL
-            )
+            rxBus.send(EventNewNotification(
+                Notification(103, "Eversense calibration is due — open AAPS to calibrate your sensor.", Notification.NORMAL)
+                    .also { n ->
+                        n.action = Runnable {
+                            setCalibrationDueDismissed(state.nextCalibrationDate)
+                            rxBus.send(EventDismissNotification(103))
+                        }
+                        n.buttonText = app.aaps.core.ui.R.string.ok
+                    }
+            ))
         }
 
         // Show firmware notification only once per unique firmware version
         if (state.firmwareVersion.isNotEmpty() && state.firmwareVersion != lastNotifiedFirmwareVersion) {
             setLastNotifiedFirmwareVersion(state.firmwareVersion)
             aapsLogger.info(LTag.BGSOURCE, "Transmitter firmware: ${state.firmwareVersion}")
-            notificationManager.post(
-                NotificationId.EVERSENSE_FIRMWARE,
-                "Eversense firmware: ${state.firmwareVersion} — open the official Eversense app to check for updates",
-                level = NotificationLevel.INFO
-            )
+            rxBus.send(EventNewNotification(
+                Notification(96, "Eversense firmware: ${state.firmwareVersion} — open the official Eversense app to check for updates", Notification.INFO, 1440)
+                    .also { n -> n.action = Runnable { rxBus.send(EventDismissNotification(96)) }; n.buttonText = app.aaps.core.ui.R.string.snooze }
+            ))
         }
     }
 
     override fun onTransmitterNotPlaced() {
         aapsLogger.warn(LTag.BGSOURCE, "Transmitter not placed — firing placement warning notification")
         mainHandler.post {
-            notificationManager.post(
-                NotificationId.EVERSENSE_PLACEMENT,
-                rh.gs(R.string.eversense_transmitter_not_placed),
-                level = NotificationLevel.URGENT
-            )
+            val notification = Notification(98, rh.gs(R.string.eversense_transmitter_not_placed), Notification.URGENT)
+            notification.action = Runnable {
+                placementNotificationSnoozed = true
+                rxBus.send(EventDismissNotification(98))
+                if (eversense.isConnected()) {
+                    val intent = Intent(context, app.aaps.plugins.source.activities.EversensePlacementActivity::class.java)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                } else {
+                    showDeviceSelectionDialog(context)
+                }
+            }
+            notification.buttonText = app.aaps.core.ui.R.string.ok
+            rxBus.send(EventNewNotification(notification))
         }
     }
 
@@ -639,16 +648,13 @@ class EversensePlugin @Inject constructor(
             alarm.code.title
         }
         val level = when {
-            alarm.code.isCritical -> NotificationLevel.URGENT
-            alarm.code.isWarning  -> NotificationLevel.NORMAL
-            else                  -> NotificationLevel.INFO
+            alarm.code.isCritical -> Notification.URGENT
+            alarm.code.isWarning  -> Notification.NORMAL
+            else                  -> Notification.INFO
         }
+        val notificationId = 95 + (alarm.codeRaw % 50)
         mainHandler.post {
-            notificationManager.post(
-                NotificationId.EVERSENSE_ALARM,
-                title,
-                level = level
-            )
+            rxBus.send(EventNewNotification(Notification(notificationId, title, level, 60)))
         }
     }
 
@@ -675,7 +681,7 @@ class EversensePlugin @Inject constructor(
                 glucoseValues,
                 listOf(),
                 insertionDate
-            )
+            ).blockingGet()
             aapsLogger.info(LTag.BGSOURCE, "CGM insert complete — inserted: ${result.inserted}, updated: ${result.updated}")
 
             // Upload E365 readings to Eversense cloud so official app sees data without needing BLE
